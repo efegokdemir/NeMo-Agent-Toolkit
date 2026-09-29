@@ -145,6 +145,29 @@ async def test_malformed_agent_output_after_max_retries(mock_react_agent_no_rais
     assert '\nQuestion: hi\n' in response.content
 
 
+async def test_json_wrapped_react_action_is_retried_not_returned_as_final(mock_config_react_agent, mock_llm, mock_tool):
+    """A JSON-wrapped ReAct action must not bypass the parser retry path."""
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch
+
+    agent = ReActAgentGraph(llm=mock_llm,
+                            prompt=create_react_agent_prompt(mock_config_react_agent),
+                            tools=[mock_tool('Tool A')],
+                            parse_agent_response_max_retries=2,
+                            raise_on_parsing_failure=True)
+    json_action = ('{"Thought": "I should use the tool.", "Action": "Tool A", '
+                   '"Action Input": {"query": "test"}}')
+    final_answer = "Thought: I have the result\\nFinal Answer: done"
+    state = ReActGraphState(messages=[HumanMessage(content="use the tool")])
+
+    with patch.object(agent, '_stream_llm', new_callable=AsyncMock) as mock_stream_llm:
+        mock_stream_llm.side_effect = [AIMessage(content=json_action), AIMessage(content=final_answer)]
+        result = await agent.agent_node(state)
+
+    assert result.final_answer == "done"
+    assert mock_stream_llm.await_count == 2
+
+
 async def test_reasoning_content_is_not_promoted_to_react_final_answer(mock_react_agent_no_raise):
     from unittest.mock import AsyncMock
     from unittest.mock import patch

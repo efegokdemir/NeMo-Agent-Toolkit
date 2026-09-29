@@ -68,6 +68,15 @@ def _looks_like_react_payload(text: str) -> bool:
     return bool(FINAL_ANSWER_PATTERN.search(text) or _REACT_ACTION_PATTERN.search(text))
 
 
+def _looks_like_json_react_action(text: str) -> bool:
+    """Return True when text is a JSON object containing a ReAct action."""
+    try:
+        payload = json.loads(text)
+    except JSONDecodeError:
+        return False
+    return isinstance(payload, dict) and "Action" in payload
+
+
 def _has_nonempty_text(content: typing.Any) -> bool:
     """Return True when message content has non-whitespace text."""
     return bool(content) and bool(str(content).strip())
@@ -347,7 +356,8 @@ class ReActAgentGraph(DualNodeAgent):
                     # a ReAct prompt echo (Thought:/Question:/Previous conversation history:).
                     content_str = str(output_message.content).strip()
                     if (ex.missing_action and content_str and not re.match(
-                            r'\s*(thought\s*:?|question\s*:|previous\s+conversation)', content_str, re.IGNORECASE)):
+                            r'\s*(thought\s*:?|question\s*:|previous\s+conversation)', content_str,
+                            re.IGNORECASE) and not _looks_like_json_react_action(content_str)):
                         logger.info(
                             "%s Agent produced direct answer without ReAct format, "
                             "accepting as final answer",
